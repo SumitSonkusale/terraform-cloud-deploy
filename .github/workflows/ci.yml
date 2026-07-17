@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  TF_VERSION: "1.8.5"
+
+jobs:
+  terraform:
+    name: Terraform Lint and Validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform ${{ env.TF_VERSION }}
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Format Check
+        id: fmt
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Init (local backend, no credentials needed)
+        id: init
+        run: terraform init -backend=false
+
+      - name: Terraform Validate
+        id: validate
+        run: terraform validate -no-color
+
+      # Plan runs with mock credentials so it exercises provider configuration
+      # without touching any real AWS account.
+      - name: Terraform Plan (dry-run)
+        id: plan
+        env:
+          AWS_ACCESS_KEY_ID: AKIAIOSFODNN7EXAMPLE
+          AWS_SECRET_ACCESS_KEY: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+          AWS_DEFAULT_REGION: eu-west-2
+        run: terraform plan -no-color -input=false
+        continue-on-error: true
+
+      - name: Post Plan summary
+        if: always()
+        run: |
+          echo "### Terraform Plan" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "fmt: ${{ steps.fmt.outcome }}" >> $GITHUB_STEP_SUMMARY
+          echo "init: ${{ steps.init.outcome }}" >> $GITHUB_STEP_SUMMARY
+          echo "validate: ${{ steps.validate.outcome }}" >> $GITHUB_STEP_SUMMARY
+          echo "plan: ${{ steps.plan.outcome }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
